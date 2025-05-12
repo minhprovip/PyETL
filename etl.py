@@ -83,12 +83,16 @@ def run_etl():
     products_query = "SELECT id AS product_id, name, category, pricing AS price FROM products"
     products = extract_data(products_query, source_conn)
     products["brand"] = "ptit"  # Add a static brand column
+    # Reorder columns to place 'brand' to the left of 'pricing'
+    products = products[["product_id", "name", "category", "brand", "price"]]
     load_data(products, "dim_products", destination_engine,primary_key="product_id")
 
     # DIM: CUSTOMERS
     customers_query = "SELECT id AS customer_id, name, email, address_id FROM customers"
     customers = extract_data(customers_query, source_conn)
     customers["phone"] = "0123456789"  # Add a static phone column
+    # Reorder columns to place 'phone' to the left of 'email'
+    customers = customers[["customer_id", "name", "email", "phone", "address_id"]]
     load_data(customers, "dim_customers", destination_engine,primary_key="customer_id")
 
     # DIM: ADDRESSES
@@ -97,24 +101,26 @@ def run_etl():
     load_data(addresses, "dim_addresses", destination_engine,primary_key="address_id")
 
     # FACT: ORDERS
-    start_date = '2025-12-04'
-    end_date = '2025-12-05'
+    start_date = '2020-12-04'
+    end_date = '2026-12-05'
     orders_query = f"""
     SELECT 
         o.customer_id,
         op.product_id,
+        ad.id AS address_id,
         DATE(o.created_at) AS order_date,
         SUM(op.quantity) AS quantity,
         AVG(op.unit_price) AS price
     FROM orders o
     JOIN order_product op ON o.id = op.order_id
-    GROUP BY o.customer_id, op.product_id, DATE(o.created_at)
+    JOIN addresses ad ON o.address_id = ad.id
+    GROUP BY o.customer_id, op.product_id, DATE(o.created_at), ad.id
     HAVING order_date >= '{start_date}' AND order_date <= '{end_date}'
 """
     orders = extract_data(orders_query, source_conn)
     orders = transform_dates(orders, "order_date")
     fact_orders = orders[[
-        "customer_id", "product_id", "order_date_id", "quantity", "price"
+        "customer_id", "product_id","address_id", "order_date_id", "quantity", "price"
     ]]
     load_data(fact_orders, "fact_orders", destination_engine,if_exists='append')
 
